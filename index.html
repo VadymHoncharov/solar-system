@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Сонячна система</title>
+    <!-- Підключення Tailwind CSS для базових стилів UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Підключення Three.js для 3D графіки -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Підключення OrbitControls для керування камерою -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        /* Скидання базових стилів */
+        body {
+            margin: 0;
+            overflow: hidden; /* Ховаємо скролли, оскільки canvas займе весь екран */
+            background-color: #000; /* Чорний фон для космосу */
+            font-family: 'Inter', sans-serif;
+            color: white;
+        }
+        /* Канвас займатиме весь доступний простір */
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        /* Стилі для інтерфейсу користувача, що накладається поверх 3D */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Дозволяємо клікам проходити крізь UI до канвасу */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        /* Контейнер для інформаційної панелі */
+        .info-panel {
+            pointer-events: auto; /* Відновлюємо події миші для кнопок/тексту */
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+            padding: 15px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 350px;
+        }
+        /* Кнопки керування швидкістю */
+        .controls {
+            pointer-events: auto;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: white;
+        }
+        button.active {
+            background: rgba(59, 130, 246, 0.6); /* Синій колір Tailwind bg-blue-500 */
+            border-color: #60a5fa; /* Синій Tailwind border-blue-400 */
+        }
+        /* Стиль для зірок на фоні */
+        .stars {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        /* Стилі для повідомлення-модалки */
+        #modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+        }
+        #modal-content {
+            background: #1f2937; /* Tailwind bg-gray-800 */
+            padding: 2rem;
+            border-radius: 0.5rem;
+            border: 1px solid #374151; /* Tailwind border-gray-700 */
+            max-width: 400px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Контейнер для Three.js -->
+    <div id="canvas-container"></div>
+
+    <!-- Інтерфейс поверх канвасу -->
+    <div id="ui-layer">
+        <header class="info-panel">
+            <h1 class="text-2xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Сонячна Система</h1>
+            <p class="text-sm text-gray-300">Інтерактивна 3D симуляція. Використовуйте мишу для обертання, масштабування та переміщення камери.</p>
+            <div id="selected-planet-info" class="mt-4 hidden border-t border-gray-600 pt-3">
+                <h2 id="planet-name" class="text-xl font-semibold text-blue-300"></h2>
+                <p id="planet-desc" class="text-xs mt-1 text-gray-400"></p>
+            </div>
+        </header>
+
+        <div class="flex flex-col items-center w-full">
+            <div class="controls">
+                <button id="btn-pause" onclick="setSpeed(0)">Пауза</button>
+                <button id="btn-normal" onclick="setSpeed(1)" class="active">x1</button>
+                <button id="btn-fast" onclick="setSpeed(5)">x5</button>
+                <button id="btn-very-fast" onclick="setSpeed(20)">x20</button>
+            </div>
+            <div class="info-panel w-auto py-2 px-4 mb-4 text-xs text-center flex gap-4">
+                <span>Ліва кнопка: Обертання</span>
+                <span>Права кнопка: Панорамування</span>
+                <span>Коліщатко: Масштаб</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальне вікно (заміна alert) -->
+    <div id="modal-overlay">
+        <div id="modal-content">
+            <h3 class="text-xl font-bold mb-4" id="modal-title">Повідомлення</h3>
+            <p class="mb-6 text-gray-300" id="modal-text"></p>
+            <button onclick="closeModal()" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded">Зрозуміло</button>
+        </div>
+    </div>
+
+    <script>
+        // Глобальні змінні
+        let scene, camera, renderer, controls;
+        let planets = [];
+        let timeSpeed = 1; // Множник швидкості часу
+        let clock = new THREE.Clock();
+        
+        // Дані про планети (відстані та розміри не в масштабі для кращої видимості)
+        const planetData = [
+            { name: "Меркурій", radius: 0.8, distance: 15, speed: 0.04, color: 0x8c8c8c, desc: "Найближча до Сонця планета." },
+            { name: "Венера", radius: 1.5, distance: 22, speed: 0.015, color: 0xe6e6fa, desc: "Найгарячіша планета з густою атмосферою." },
+            { name: "Земля", radius: 1.6, distance: 30, speed: 0.01, color: 0x2b82c9, desc: "Наша домівка. Єдина відома планета з життям." },
+            { name: "Марс", radius: 1.2, distance: 40, speed: 0.008, color: 0xc1440e, desc: "Червона планета." },
+            { name: "Юпітер", radius: 4.5, distance: 60, speed: 0.002, color: 0xd39c7e, desc: "Найбільша планета, газовий гігант." },
+            { name: "Сатурн", radius: 3.8, distance: 85, speed: 0.0009, color: 0xeaddb5, hasRings: true, desc: "Відомий своїми яскравими кільцями." },
+            { name: "Уран", radius: 2.5, distance: 110, speed: 0.0004, color: 0x4b70dd, desc: "Крижаний гігант, що обертається 'на боці'." },
+            { name: "Нептун", radius: 2.4, distance: 130, speed: 0.0001, color: 0x274687, desc: "Найвіддаленіша планета, синій крижаний гігант." }
+        ];
+
+        // Ініціалізація
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. Сцена
+            scene = new THREE.Scene();
+            
+            // 2. Камера
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 50, 100); // Позиція камери (трохи зверху і збоку)
+
+            // 3. Рендерер
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            // Додаємо канвас до DOM
+            container.appendChild(renderer.domElement);
+
+            // 4. Управління (OrbitControls)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Плавність
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 10;
+            controls.maxDistance = 300;
+
+            // 5. Освітлення
+            // Навколишнє світло (дуже слабке, щоб темні сторони планет не були абсолютно чорними)
+            const ambientLight = new THREE.AmbientLight(0x222222);
+            scene.add(ambientLight);
+
+            // Точкове світло від Сонця
+            const sunLight = new THREE.PointLight(0xffffff, 2.5, 300);
+            sunLight.position.set(0, 0, 0);
+            scene.add(sunLight);
+
+            // 6. Створення об'єктів
+            createSun();
+            createPlanets();
+            createStarfield();
+
+            // 7. Обробник зміни розміру вікна
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // 8. Обробник кліків для виділення планет
+            window.addEventListener('click', onMouseClick, false);
+            // Для мобільних пристроїв
+            window.addEventListener('touchstart', onTouchStart, {passive: false});
+
+            // Показуємо привітання
+            showModal("Вітаємо!", "Досліджуйте Сонячну систему. Натискайте на планети (сфери), щоб дізнатися про них більше.");
+        }
+
+        function createSun() {
+            // Геометрія Сонця
+            const sunGeometry = new THREE.SphereGeometry(8, 64, 64);
+            // Матеріал (MeshBasicMaterial не реагує на світло, він сам світиться)
+            const sunMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffcc00,
+                // Додаємо трохи "світіння" за рахунок базового матеріалу
+            });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+            
+            // Просте світіння Сонця (кільце навколо)
+            const glowGeometry = new THREE.SphereGeometry(9, 32, 32);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffaa00,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.BackSide // Рендеримо зсередини, щоб створити ореол
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            scene.add(glow);
+        }
+
+        function createPlanets() {
+            // Створюємо групу для кожної планети, щоб вона оберталася навколо сонця
+            planetData.forEach((data, index) => {
+                // Група (Orbit), що обертатиметься навколо центру (0,0,0)
+                const orbitGroup = new THREE.Group();
+                scene.add(orbitGroup);
+
+                // Геометрія планети
+                const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+                
+                // Матеріал (MeshStandardMaterial реагує на світло)
+                // Створюємо базову текстуру/шум за допомогою Canvas API, щоб уникнути завантаження зовнішніх картинок
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const context = canvas.getContext('2d');
+                context.fillStyle = '#' + data.color.toString(16).padStart(6, '0');
+                context.fillRect(0, 0, 256, 256);
+                
+                // Додаємо просту процедурну текстуру (плями)
+                for(let i=0; i<50; i++) {
+                    context.fillStyle = 'rgba(255,255,255,0.1)';
+                    context.beginPath();
+                    context.arc(Math.random()*256, Math.random()*256, Math.random()*20, 0, Math.PI*2);
+                    context.fill();
+                    
+                    context.fillStyle = 'rgba(0,0,0,0.1)';
+                    context.beginPath();
+                    context.arc(Math.random()*256, Math.random()*256, Math.random()*20, 0, Math.PI*2);
+                    context.fill();
+                }
+
+                const texture = new THREE.CanvasTexture(canvas);
+                
+                const material = new THREE.MeshStandardMaterial({ 
+                    map: texture,
+                    roughness: 0.7, // Робимо поверхню не дуже блискучою
+                    metalness: 0.1
+                });
+                
+                const planetMesh = new THREE.Mesh(geometry, material);
+                
+                // Відсуваємо планету від центру
+                planetMesh.position.set(data.distance, 0, 0);
+                // Додаємо властивості для ідентифікації при кліку
+                planetMesh.userData = { name: data.name, desc: data.desc, isPlanet: true };
+
+                // Додаємо кільця (для Сатурна)
+                if (data.hasRings) {
+                    const ringGeometry = new THREE.RingGeometry(data.radius * 1.4, data.radius * 2.2, 64);
+                    // Використовуємо MeshStandardMaterial для кілець, але він має бути двостороннім
+                    const ringMaterial = new THREE.MeshStandardMaterial({
+                        color: 0xc2b280,
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+                    // Кільця зазвичай нахилені
+                    ringMesh.rotation.x = Math.PI / 2 + 0.3; 
+                    planetMesh.add(ringMesh);
+                }
+
+                // Додаємо лінію орбіти (візуальна підказка)
+                const orbitCurve = new THREE.EllipseCurve(
+                    0, 0,            // ax, aY
+                    data.distance, data.distance, // xRadius, yRadius
+                    0, 2 * Math.PI,  // aStartAngle, aEndAngle
+                    false,            // aClockwise
+                    0                 // aRotation
+                );
+                const points = orbitCurve.getPoints(100);
+                const orbitGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
+                const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+                // Повертаємо лінію орбіти, щоб вона лежала в площині XZ
+                orbitLine.rotation.x = Math.PI / 2;
+                scene.add(orbitLine);
+
+                // Додаємо планету до її орбітальної групи
+                orbitGroup.add(planetMesh);
+
+                // Зберігаємо посилання для анімації
+                planets.push({
+                    mesh: planetMesh,
+                    group: orbitGroup,
+                    speed: data.speed,
+                    selfRotationSpeed: 0.02 * (Math.random() * 0.5 + 0.5) // Випадкова швидкість обертання навколо осі
+                });
+            });
+        }
+
+        function createStarfield() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsCount = 2000;
+            const posArray = new Float32Array(starsCount * 3);
+            const colorArray = new Float32Array(starsCount * 3);
+
+            for(let i = 0; i < starsCount * 3; i+=3) {
+                // Випадкова позиція в сфері радіусом 500
+                const r = 500;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                posArray[i] = r * Math.sin(phi) * Math.cos(theta);     // x
+                posArray[i+1] = r * Math.sin(phi) * Math.sin(theta);   // y
+                posArray[i+2] = r * Math.cos(phi);                     // z
+
+                // Легкі варіації кольору зірок
+                const shade = Math.random() * 0.5 + 0.5;
+                colorArray[i] = shade;     // R
+                colorArray[i+1] = shade;   // G
+                colorArray[i+2] = shade;   // B
+            }
+
+            starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            starsGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+            const starsMaterial = new THREE.PointsMaterial({
+                size: 0.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const starMesh = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starMesh);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Raycaster для визначення кліків по планетах
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function handleInteraction(clientX, clientY) {
+            // Обчислюємо координати миші в нормалізованих координатах пристрою (-1 to +1)
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+            // Оновлюємо raycaster
+            raycaster.setFromCamera(mouse, camera);
+
+            // Знаходимо перетини з об'єктами
+            const intersects = raycaster.intersectObjects(scene.children, true); // true для рекурсивного пошуку
+
+            let clickedPlanet = null;
+
+            for (let i = 0; i < intersects.length; i++) {
+                // Перевіряємо, чи має об'єкт userData з прапорцем isPlanet
+                if (intersects[i].object.userData && intersects[i].object.userData.isPlanet) {
+                    clickedPlanet = intersects[i].object;
+                    break; // Зупиняємося на першій знайденій планеті
+                }
+            }
+
+            const infoDiv = document.getElementById('selected-planet-info');
+            const nameEl = document.getElementById('planet-name');
+            const descEl = document.getElementById('planet-desc');
+
+            if (clickedPlanet) {
+                // Відображаємо інформацію
+                nameEl.textContent = clickedPlanet.userData.name;
+                descEl.textContent = clickedPlanet.userData.desc;
+                infoDiv.classList.remove('hidden');
+                
+                // Створюємо ефект "підсвічування" або візуального фідбеку можна додати тут
+            } else {
+                // Ховаємо інформацію, якщо клікнули в порожнечу
+                infoDiv.classList.add('hidden');
+            }
+        }
+
+        function onMouseClick(event) {
+            handleInteraction(event.clientX, event.clientY);
+        }
+
+        function onTouchStart(event) {
+            // Не блокуємо дефолтну поведінку, якщо це не канвас
+            if(event.touches.length > 0) {
+                handleInteraction(event.touches[0].clientX, event.touches[0].clientY);
+            }
+        }
+
+        // Функції UI
+        function setSpeed(multiplier) {
+            timeSpeed = multiplier;
+            
+            // Оновлення активної кнопки
+            const buttons = document.querySelectorAll('.controls button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            if (multiplier === 0) document.getElementById('btn-pause').classList.add('active');
+            if (multiplier === 1) document.getElementById('btn-normal').classList.add('active');
+            if (multiplier === 5) document.getElementById('btn-fast').classList.add('active');
+            if (multiplier === 20) document.getElementById('btn-very-fast').classList.add('active');
+        }
+
+        function showModal(title, text) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-text').innerText = text;
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        // Головний цикл анімації
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Оновлюємо контролери камери
+            controls.update();
+
+            // Рахуємо дельту часу (стала швидкість незалежно від FPS)
+            const delta = clock.getDelta();
+
+            // Анімація планет
+            planets.forEach(p => {
+                // 1. Обертання навколо Сонця (обертаємо групу)
+                p.group.rotation.y -= p.speed * timeSpeed * delta * 60; // 60 для нормалізації
+                
+                // 2. Обертання навколо власної осі (обертаємо сам меш)
+                p.mesh.rotation.y += p.selfRotationSpeed * (timeSpeed > 0 ? 1 : 0) * delta * 60;
+            });
+
+            // Рендер сцени
+            renderer.render(scene, camera);
+        }
+
+        // Запуск
+        window.onload = function() {
+            init();
+            animate();
+        };
+
+    </script>
+</body>
+</html>
