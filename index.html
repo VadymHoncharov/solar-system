@@ -11,6 +11,35 @@
     <!-- Підключення OrbitControls для керування камерою -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
+        #audio-player {
+    pointer-events: auto;
+    position: absolute;
+    right: 20px;
+    bottom: 90px;
+    width: 230px;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+    padding: 12px;
+    transform: translateX(190px);
+    transition: transform 0.3s ease;
+}
+
+#audio-player.open {
+    transform: translateX(0);
+}
+
+#audio-toggle-panel {
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #93c5fd;
+}
+
+#audio-player input[type="range"] {
+    width: 100%;
+}
         /* Скидання базових стилів */
         body {
             margin: 0;
@@ -123,7 +152,28 @@
                 <p id="planet-desc" class="text-xs mt-1 text-gray-400"></p>
             </div>
         </header>
+<div id="audio-player">
+    <div id="audio-toggle-panel" onclick="toggleAudioPanel()">🎵 Музика</div>
 
+    <button id="music-btn" onclick="toggleMusic()">▶ Увімкнути</button>
+
+    <div class="mt-3 text-xs text-gray-300">
+        Гучність
+    </div>
+
+    <input 
+        type="range" 
+        min="0" 
+        max="1" 
+        step="0.01" 
+        value="0.4" 
+        oninput="setMusicVolume(this.value)"
+    >
+
+    <audio id="bg-music" loop>
+        <source src="music.mp3" type="audio/mpeg">
+    </audio>
+</div>
         <div class="flex flex-col items-center w-full">
             <div class="controls">
                 <button id="btn-pause" onclick="setSpeed(0)">Пауза</button>
@@ -157,14 +207,14 @@
         
         // Дані про планети (відстані та розміри не в масштабі для кращої видимості)
         const planetData = [
-            { name: "Меркурій", radius: 0.8, distance: 15, speed: 0.04, color: 0x8c8c8c, desc: "Найближча до Сонця планета. На її поверхні дуже багато кратерів, а температура коливається від -180°C вночі до +430°C вдень." },
-            { name: "Венера", radius: 1.5, distance: 22, speed: 0.015, color: 0xe6e6fa, desc: "Найгарячіша планета з густою атмосферою. Венера обертається у протилежний бік порівняно з більшістю планет, а її атмосфера складається переважно з вуглекислого газу." },
-            { name: "Земля", radius: 1.6, distance: 30, speed: 0.01, color: 0x2b82c9, desc: "Наша домівка. Єдина відома планета з життям. 71% поверхні Землі вкрито водою, а атмосфера захищає планету від небезпечної сонячної радіації." },
-            { name: "Марс", radius: 1.2, distance: 40, speed: 0.008, color: 0xc1440e, desc: "Червона планета. На Марсі знаходиться найвища гора Сонячної системи — Олімп, а також часто виникають величезні пилові бурі." },
-            { name: "Юпітер", radius: 4.5, distance: 60, speed: 0.002, color: 0xd39c7e, desc: "Найбільша планета, газовий гігант. Юпітер має понад 90 супутників і знаменитий Великий Червоний Шторм, який триває сотні років." },
-            { name: "Сатурн", radius: 3.8, distance: 85, speed: 0.0009, color: 0xeaddb5, hasRings: true, desc: "Відомий своїми яскравими кільцями. Кільця Сатурна складаються переважно з льоду та каміння, а сама планета є другою за розміром у Сонячній системі." },
-            { name: "Уран", radius: 2.5, distance: 110, speed: 0.0004, color: 0x4b70dd, desc: "Крижаний гігант, що обертається 'на боці'. Через сильний нахил осі один сезон на Урані може тривати понад 20 земних років." },
-            { name: "Нептун", radius: 2.4, distance: 130, speed: 0.0001, color: 0x274687, desc: "Найвіддаленіша планета, синій крижаний гігант. На Нептуні спостерігаються найсильніші вітри в Сонячній системі — понад 2000 км/год." }
+            { name: "Меркурій", radius: 0.8, distance: 15, speed: 0.04, color: 0x8c8c8c, desc: "Найближча до Сонця планета. Має поверхню, вкриту кратерами, схожу на Місяць. Через майже повну відсутність атмосфери температура тут коливається від -180°C вночі до +430°C вдень. Один рік на Меркурії триває лише 88 земних днів, а один день — майже 176 земних днів." },
+            { name: "Венера", radius: 1.5, distance: 22, speed: 0.015, color: 0xe6e6fa, desc: "Найгарячіша планета Сонячної системи через надзвичайно густу атмосферу з вуглекислого газу. Температура поверхні сягає приблизно +465°C. Венера обертається у зворотному напрямку, тому Сонце там сходить на заході. Її часто називають “сестрою Землі” через схожі розміри." },
+            { name: "Земля", radius: 1.6, distance: 30, speed: 0.01, color: 0x2b82c9, desc: "Єдина відома планета, на якій існує життя. 71% поверхні вкрито водою, а атмосфера містить кисень і захищає планету від небезпечної сонячної радіації. Земля має один природний супутник — Місяць, який впливає на припливи та відпливи океанів." },
+            { name: "Марс", radius: 1.2, distance: 40, speed: 0.008, color: 0xc1440e, desc: "Відомий як Червона планета через велику кількість оксиду заліза на поверхні. Тут розташований вулкан Олімп — найвища гора Сонячної системи, висотою близько 22 км. Марс має два маленькі супутники: Фобос і Деймос. Вчені вважають, що в минулому на Марсі могла бути вода." },
+            { name: "Юпітер", radius: 4.5, distance: 60, speed: 0.002, color: 0xd39c7e, desc: "Найбільша планета Сонячної системи та справжній газовий гігант. Його маса у понад 2 рази більша за масу всіх інших планет разом узятих. Велика Червона Пляма — це гігантський шторм, який триває сотні років. Юпітер має дуже сильне магнітне поле та понад 90 супутників." },
+            { name: "Сатурн", radius: 3.8, distance: 85, speed: 0.0009, color: 0xeaddb5, hasRings: true, desc: "Відомий своїми величезними кільцями, які складаються з льоду, пилу та уламків каміння. Це друга за розміром планета Сонячної системи. Сатурн настільки легкий, що теоретично міг би плавати у воді. Планета має понад 140 супутників, серед яких Титан — один із найцікавіших." },
+            { name: "Уран", radius: 2.5, distance: 110, speed: 0.0004, color: 0x4b70dd, desc: "Крижаний гігант блакитного кольору через велику кількість метану в атмосфері. Особливість Урана — він обертається майже “лежачи на боці”, через що пори року там тривають десятки земних років. Це одна з найхолодніших планет Сонячної системи." },
+            { name: "Нептун", radius: 2.4, distance: 130, speed: 0.0001, color: 0x274687, desc: "Найвіддаленіша планета Сонячної системи. В атмосфері Нептуна вирують найшвидші вітри серед усіх планет — понад 2000 км/год. Його насичений синій колір також пов’язаний із метаном в атмосфері. Один рік на Нептуні триває приблизно 165 земних років." }
         ];
 
         // Ініціалізація
@@ -476,7 +526,31 @@
             // Рендер сцени
             renderer.render(scene, camera);
         }
+let isMusicPlaying = false;
 
+function toggleAudioPanel() {
+    document.getElementById('audio-player').classList.toggle('open');
+}
+
+function toggleMusic() {
+    const music = document.getElementById('bg-music');
+    const btn = document.getElementById('music-btn');
+
+    if (!isMusicPlaying) {
+        music.volume = 0.4;
+        music.play();
+        btn.textContent = "⏸ Вимкнути";
+        isMusicPlaying = true;
+    } else {
+        music.pause();
+        btn.textContent = "▶ Увімкнути";
+        isMusicPlaying = false;
+    }
+}
+
+function setMusicVolume(value) {
+    document.getElementById('bg-music').volume = value;
+}
         // Запуск
         window.onload = function() {
             init();
